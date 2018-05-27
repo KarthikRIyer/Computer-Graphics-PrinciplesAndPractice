@@ -1,0 +1,35 @@
+﻿<Window x:Class="Ch5_ex2_motion_induced_blindness.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Ch5_ex2_motion_induced_blindness"
+        mc:Ignorable="d"
+        Title="MainWindow" Height="450" Width="800">
+    <Grid>
+        <Canvas
+            x:Name="canvas"></Canvas>
+        <Canvas
+            x:Name="canvas2"></Canvas>
+        <Canvas
+            Width="100"
+            Height="450"
+            HorizontalAlignment="Left">
+            <Rectangle
+                Width="100"
+                Height="422"
+                Fill="PeachPuff"
+                />
+
+        </Canvas>
+        <StackPanel>
+        <TextBlock>Time(0 to 20)</TextBlock>
+        <Slider Maximum="20"
+                Width="80"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Center"
+                x:Name="timeSlider"
+                Value="10"/>
+        </StackPanel>
+    </Grid>
+</Window>

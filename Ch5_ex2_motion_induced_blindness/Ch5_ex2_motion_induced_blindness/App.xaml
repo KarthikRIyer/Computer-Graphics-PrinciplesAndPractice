@@ -1,0 +1,9 @@
+﻿<Application x:Class="Ch5_ex2_motion_induced_blindness.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Ch5_ex2_motion_induced_blindness"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+         
+    </Application.Resources>
+</Application>
