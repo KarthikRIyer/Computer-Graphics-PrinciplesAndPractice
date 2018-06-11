@@ -312,6 +312,9 @@ void oneTriangleScene(Scene& scene){
 void triangleGroundScene(Scene& scene){
 	oneTriangleScene(scene);
 
+	scene.triangleArray.push_back(Triangle(Vector3(-0.5,1.7,-3), Vector3(-2.4,-0.5,-3), Vector3(1.1,0,-3),Vector3(0,0.6f,1).direction(),Vector3(-0.4f,-0.4f, 1.0f).direction(),Vector3(0.4f,-0.4f, 1.0f).direction(), BSDF(Color3::green()*0.8,Color3::white()*0.2f,100.0f)));
+	scene.triangleArray.push_back(Triangle(Vector3(-2.4,-0.5,-3),Vector3(-0.5,1.7,-3), Vector3(1.1,0,-3),Vector3(0,0.6f,1).direction(),Vector3(-0.4f,-0.4f, 1.0f).direction(),Vector3(0.4f,-0.4f, 1.0f).direction(), BSDF(Color3::green()*0.8,Color3::white()*0.2f,100.0f)));
+
 	scene.triangleArray.push_back(Triangle(Vector3(-1.9,-1,-2), Vector3(0,1,-2),Vector3(1.6,-0.5,-2), Vector3(-0.4f,-0.4f, 1.0f).direction(),Vector3(0,0.6f,1).direction(), Vector3(0.4f,-0.4f, 1.0f).direction(),BSDF(Color3::green()*0.8f,Color3::green()*0.2f,100.0f)));
 
 	const float groundY = -1.0f;
