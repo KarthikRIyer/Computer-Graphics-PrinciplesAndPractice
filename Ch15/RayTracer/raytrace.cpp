@@ -1,8 +1,6 @@
 #include<iostream>
 #include<vector>
 #include <math.h>
-// #include<limits>
-// #define INFINITY (numeric_limits<float>::infinity())
 
 class Vector2 { public: float x,y; };
 class Vector3 { 
@@ -154,6 +152,18 @@ public:
 
 };
 
+class Sphere{
+public:
+	Point3 Q;
+	float rad;
+	BSDF m_bsdf;
+	Sphere(){}
+	Sphere(Point3 center,float r,BSDF bsdf):Q(center),rad(r),m_bsdf(bsdf){}
+	Point3 center()const{return Q;}
+	float radius()const{return rad;}
+	BSDF bsdf() const{return m_bsdf;}
+};
+
 class Light{
 public:
 	Point3 position;
@@ -164,6 +174,7 @@ class Scene{
 public:
 	std::vector<Triangle> triangleArray;
 	std::vector<Light> lightArray;
+	std::vector<Sphere> sphereArray;
 	Scene(){}
 };
 
@@ -188,7 +199,7 @@ Ray computeEyeRay(float x, float y, int width, int height, const Camera& camera)
 
 }
 
-float intersect(Ray& R,const Triangle& T, float weight[3]){
+float intersectT(Ray& R,const Triangle& T, float weight[3]){
 
 	Vector3 e1 = T.vertex(1) - T.vertex(0);
 	Vector3 e2 = T.vertex(2) - T.vertex(0);
@@ -215,6 +226,28 @@ float intersect(Ray& R,const Triangle& T, float weight[3]){
 	}
 }
 
+float intersectS(Ray& R, const Sphere& S){
+	Vector3 v = R.origin() - S.center();
+	if(v.length() > S.radius()){
+	float a = (R.direction()).dot(R.direction());
+	float b = 2.0f*((R.direction()).dot(v));
+	float c = v.dot(v) - S.radius();
+	float D = b*b - 4*a*c;
+	if(D>=0){
+		float t1 = (-b + sqrt(D))/(2*a);
+		float t2 = (-b - sqrt(D))/(2*a);
+		if(t1<0 && t2>0){t1 = t2;}
+		if(t1>0 && t2<0){t2 = t1;}
+		if(t1<0 && t2<0){return INFINITY;}
+		float d1 = (R.direction()*t1).length();
+		float d2 = (R.direction()*t2).length();
+
+		return std::min(d1,d2);
+	}
+	}
+	return INFINITY;
+}
+
 bool visible(Point3& P, Vector3& direction, float distanceToLight, const Scene& scene){
 
 	static const float rayBumpEpsilon = 1e-4;
@@ -222,7 +255,12 @@ bool visible(Point3& P, Vector3& direction, float distanceToLight, const Scene& 
 	distanceToLight -= rayBumpEpsilon;
 	float ignore[3];
 	for(unsigned int i = 0;i < scene.triangleArray.size();++i){
-		if(intersect(shadowRay,scene.triangleArray[i],ignore) < distanceToLight){
+		if(intersectT(shadowRay,scene.triangleArray[i],ignore) < distanceToLight){
+			return false;
+		}
+	}
+	for(unsigned int i = 0; i < scene.sphereArray.size();++i){
+		if(intersectS(shadowRay, scene.sphereArray[i]) <  distanceToLight){
 			return false;
 		}
 	}
@@ -242,19 +280,38 @@ void shade(const Scene& scene, Triangle& T,Point3& P, Vector3& n,  Vector3& w_o,
 
 		if(visible(P ,w_i ,distanceToLight ,scene)){
 			Radiance3 L_i = light.power / (4*M_PI*distanceToLight*distanceToLight);
-			//L_o += (L_i*T.bsdf().evaluateFiniteScatteringDensity(w_i,w_o)*std::max(0.0f,w_i.dot(n)));
+			
 			L_o.r += (L_i*T.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).r*std::max(0.0f,w_i.dot(n));
 			L_o.g += (L_i*T.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).g*std::max(0.0f,w_i.dot(n));
 			L_o.b += (L_i*T.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).b*std::max(0.0f,w_i.dot(n));
-			//std::cout<<L_o.b<<"\n";
+	
 		}
 	}
 
 }
 
+void shade(const Scene& scene, Sphere& S, Point3& P, Vector3& n, Vector3& w_o, Radiance3& L_o){
+	L_o = Color3(0.0f,0.0f,0.0f);
+
+	for(unsigned int i = 0; i<scene.lightArray.size();i++){
+		Light light = scene.lightArray[i];
+
+		Vector3 offset = light.position - P;
+		float distanceToLight = offset.length();
+		Vector3 w_i = offset/distanceToLight;
+		if(visible(P ,w_i ,distanceToLight ,scene)){
+			Radiance3 L_i = light.power / (4*M_PI*distanceToLight*distanceToLight);
+
+			L_o.r += (L_i*S.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).r*std::max(0.0f,w_i.dot(n));
+			L_o.g += (L_i*S.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).g*std::max(0.0f,w_i.dot(n));
+			L_o.b += (L_i*S.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).b*std::max(0.0f,w_i.dot(n));
+		}
+	}
+}
+
 bool sampleRayTriangle(const Scene& scene, int x, int y, Ray& R, Triangle& T, Radiance3& radiance, float& distance){
 	float weight[3];
-	const float d  = intersect(R,T,weight);
+	const float d  = intersectT(R,T,weight);
 
 	if(d >= distance){
 		return false;
@@ -270,8 +327,22 @@ bool sampleRayTriangle(const Scene& scene, int x, int y, Ray& R, Triangle& T, Ra
 
 	shade(scene, T, P, n, w_o, radiance);
 
-	//radiance = Radiance3(weight[0],weight[1],weight[2])/15;
+	return true;
+}
 
+bool sampleRaySphere(const Scene& scene, int x, int y, Ray& R, Sphere& S, Radiance3& radiance, float& distance){
+	const float d = intersectS(R,S);
+	if(d >= distance){
+		return false;
+	}
+
+	distance = d;
+
+	Point3 P = R.origin() + R.direction()*d;
+	Vector3 n = (P - S.center()).direction();
+	Vector3 w_o = -R.direction();
+
+	shade(scene, S, P, n, w_o, radiance);
 	return true;
 }
 
@@ -283,7 +354,6 @@ void rayTrace(Image image , const Scene& scene , const Camera& camera , int x0 ,
 
 			float distance = INFINITY;
 
-			//image.set(x,y,Color3(R.direction()+Vector3(1,1,1))/5);
 			 Radiance3 L_o;
 
 			for(unsigned int t = 0; t<scene.triangleArray.size(); ++t){
@@ -295,32 +365,45 @@ void rayTrace(Image image , const Scene& scene , const Camera& camera , int x0 ,
 
 			}
 
+			for(unsigned int t = 0;t<scene.sphereArray.size();++t){
+				Sphere S = scene.sphereArray[t];
+				if(sampleRaySphere(scene,x,y,R,S,L_o,distance)){
+					image.set(x,y,L_o);
+				}
+			}			
+
 		}
 	}
-	image.save("result_3.ppm",2.0f);
+	image.save("result_4.ppm",2.0f);
 }
 
-void oneTriangleScene(Scene& scene){
+void lightScene(Scene& scene){
 
-	scene.triangleArray.push_back(Triangle(Vector3(0,1,-2), Vector3(-1.9,-1,-2), Vector3(1.6,-0.5,-2),Vector3(0,0.6f,1).direction(),Vector3(-0.4f,-0.4f, 1.0f).direction(),Vector3(0.4f,-0.4f, 1.0f).direction(), BSDF(Color3::green()*0.8,Color3::white()*0.2f,100.0f)));
-	scene.lightArray.resize(1);
+	
+	scene.lightArray.resize(2);
 	scene.lightArray[0].position = Point3(1, 3, 1);
 	scene.lightArray[0].power = Color3(1.0f,1.0f,1.0f)*20.0f;
+	scene.lightArray[1].position = Point3(-1, 1, 0);
+	scene.lightArray[1].power = Color3(1.0f,1.0f,1.0f)*10.0f;
 
 }
 
 void triangleGroundScene(Scene& scene){
-	oneTriangleScene(scene);
+	lightScene(scene);
 
 	scene.triangleArray.push_back(Triangle(Vector3(-0.5,1.7,-3), Vector3(-2.4,-0.5,-3), Vector3(1.1,0,-3),Vector3(0,0.6f,1).direction(),Vector3(-0.4f,-0.4f, 1.0f).direction(),Vector3(0.4f,-0.4f, 1.0f).direction(), BSDF(Color3::green()*0.8,Color3::white()*0.2f,100.0f)));
 	scene.triangleArray.push_back(Triangle(Vector3(-2.4,-0.5,-3),Vector3(-0.5,1.7,-3), Vector3(1.1,0,-3),Vector3(0,0.6f,1).direction(),Vector3(-0.4f,-0.4f, 1.0f).direction(),Vector3(0.4f,-0.4f, 1.0f).direction(), BSDF(Color3::green()*0.8,Color3::white()*0.2f,100.0f)));
 
-	scene.triangleArray.push_back(Triangle(Vector3(-1.9,-1,-2), Vector3(0,1,-2),Vector3(1.6,-0.5,-2), Vector3(-0.4f,-0.4f, 1.0f).direction(),Vector3(0,0.6f,1).direction(), Vector3(0.4f,-0.4f, 1.0f).direction(),BSDF(Color3::green()*0.8f,Color3::green()*0.2f,100.0f)));
+	scene.triangleArray.push_back(Triangle(Vector3(2.0f,0.1f,-4.0f), Vector3(1.0f,1.0f,-4.0f), Vector3(0.2f,0.1f,-4.0f),Vector3(0,0,1.0f).direction(),Vector3(0,0, 1.0f).direction(),Vector3(0,0, 1.0f).direction(), BSDF(Color3::red()*0.8,Color3::white()*0.2f,100.0f)));
+	scene.triangleArray.push_back(Triangle(Vector3(1.0f,1.0f,-4.0f),Vector3(2.0f,0.1f,-4.0f), Vector3(0.2f,0.1f,-4.0f),Vector3(0,0,1.0f).direction(),Vector3(0,0, 1.0f).direction(),Vector3(0,0, 1.0f).direction(), BSDF(Color3::red()*0.8,Color3::white()*0.2f,100.0f)));
 
 	const float groundY = -1.0f;
 
 	scene.triangleArray.push_back(Triangle(Vector3(-10, groundY, -10), Vector3(-10, groundY, -0.01f),Vector3(10, groundY, -0.01f),Vector3::unitY(), Vector3::unitY(), Vector3::unitY(), BSDF(Color3::white()*0.8f,Color3::white()*0.2f,100.0f)));
 	scene.triangleArray.push_back(Triangle(Vector3(-10, groundY, -10), Vector3(10, groundY, -0.01f),Vector3(10, groundY, -10),Vector3::unitY(), Vector3::unitY(), Vector3::unitY(), BSDF(Color3::white()*0.8f,Color3::white()*0.2f,100.0f)));
+
+	scene.sphereArray.push_back(Sphere(Point3(0.0f,0.3f,-1.7f),0.1f,BSDF(Color3::blue()*0.8,Color3::white()*0.2f,100.0f)));
+	scene.sphereArray.push_back(Sphere(Point3(0.1f,0.5f,-1.2f),0.01f,BSDF(Color3::yellow()*0.8,Color3::white()*0.2f,100.0f)));
 }
 
 int main(){
