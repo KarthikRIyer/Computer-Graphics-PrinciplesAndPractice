@@ -1,5 +1,6 @@
 #include<iostream>
 #include<vector>
+#include<algorithm>
 using namespace std;
 
 class Vector2 { 
@@ -11,13 +12,13 @@ class Vector2 {
 		return (x * v.x + y * v.y);
 	}
 	Vector2 operator - (Vector2 v) const
-    { return Vector2(x - v.x, y - v.y); }
-    Vector2 operator + (Vector2 v) const
-    { return Vector2(x + v.x, y + v.y); }
+	{ return Vector2(x - v.x, y - v.y); }
+	Vector2 operator + (Vector2 v) const
+	{ return Vector2(x + v.x, y + v.y); }
 
-    Vector2 operator * (float f) const{
-    	return Vector2(x*f,y*f);
-    }
+	Vector2 operator * (float f) const{
+		return Vector2(x*f,y*f);
+	}
 };
 typedef Vector2 Point2;
 
@@ -46,26 +47,15 @@ vector<Point2> clip(vector<Point2> sourcePoly,Point2 P, Vector2 n){
 	Point2 D = sourcePoly[sourcePoly.size() - 1]; 
 	bool Din = inside(D,P,n);
 	if(Din){result.push_back(D);}
-	// cout<<sourcePoly.size()<<endl;
-	 
-	// cout<<Din<<endl;
+
 	for(int i = 0; i<sourcePoly.size();++i){
 		Point2 C = D;
 		bool Cin = Din;
 		D = sourcePoly[i];
 		Din = inside(D,P,n);
-		// cout<<Din<<endl;
 		if(Din != Cin){result.push_back(intersection(C,D,P,n));}
 		if(Din){result.push_back(D);}
 	}
-
-
-	// cout<<result.size()<<endl;
-
-	// for(int i = 0; i<result.size();i++){
-	// 	cout<<result[i].x<<" "<<result[i].y<<endl;
-	// }
-	// cout<<"\n\n";
 	
 	return result;
 
@@ -77,12 +67,25 @@ vector<Point2> polyClip(vector<Point2> boundaryPoly,vector<Point2> sourcePoly){
 		if(i == boundaryPoly.size()-1){
 			sourcePoly = clip(sourcePoly,boundaryPoly[i],Vector2(boundaryPoly[i].y-boundaryPoly[0].y,boundaryPoly[0].x-boundaryPoly[i].x));
 		}else{
-		sourcePoly = clip(sourcePoly,boundaryPoly[i],Vector2(boundaryPoly[i].y-boundaryPoly[i+1].y,boundaryPoly[i+1].x-boundaryPoly[i].x));
-			}
+			sourcePoly = clip(sourcePoly,boundaryPoly[i],Vector2(boundaryPoly[i].y-boundaryPoly[i+1].y,boundaryPoly[i+1].x-boundaryPoly[i].x));
+		}
 
 	}
 	return sourcePoly;
 
+}
+
+bool comparePoint(Point2 p1 , Point2 p2){
+	if(p1.x != p2.x){
+		return p1.x>p2.x;
+	}else if(p1.y != p2.y){
+		return p1.y>p2.y;
+	}
+}
+
+bool equalPoint(Point2 p1, Point2 p2){
+	if(p1.x == p2.x && p1.y == p2.y){return true;}
+	else{return false;}
 }
 
 int main(){
@@ -108,7 +111,10 @@ int main(){
 
 	sourcePoly = polyClip(boundaryPoly,sourcePoly);
 
-	// cout<<sourcePoly.size();
+	std::sort(sourcePoly.begin(),sourcePoly.end(),comparePoint);
+	auto unique_end = unique(sourcePoly.begin(),sourcePoly.end(),equalPoint);
+	sourcePoly.erase(unique_end,sourcePoly.end());
+
 
 	for(int i = 0;i<sourcePoly.size();i++){
 		cout<<sourcePoly[i].x<<" "<<sourcePoly[i].y<<endl;
