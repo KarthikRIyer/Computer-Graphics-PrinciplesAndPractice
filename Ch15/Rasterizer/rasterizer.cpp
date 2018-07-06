@@ -45,8 +45,9 @@ class Color3 {
 			Color3 operator / (float f) const{return Color3(r/f,g/f,b/f);}
 			Color3 operator * (Color3 c) const{return(Color3(r*c.r, g*c.g, b*c.b));}
 			Color3 operator * (float f) const{return Color3(r*f,g*f,b*f);}
-			Color3 operator += (Color3 c){return Color3(r+=(c.r), g+=(c.g), b+=(c.b));}
+			void operator += (Color3 c){r+=(c.r); g+=(c.g); b+=(c.b);}
 			Color3 operator + (Color3 c) const{return Color3(r+c.r,g+c.g,b+c.b);}
+
 			static Color3 red(){return Color3(1.0f,0.0f,0.0f);}
 			static Color3 green(){return Color3(0.0f,1.0f,0.0f);}
 			static Color3 blue(){return Color3(0.0f,0.0f,1.0f);}
@@ -119,6 +120,45 @@ void Image::save(const std::string& filename,float d) const{
 	fclose(file);
 }
 
+class DepthBuffer{
+
+private: 
+	int m_width;
+	int m_height;
+	std::vector<float> m_depth;	
+
+public:
+	DepthBuffer(int width,int height): m_width(width),m_height(height),m_depth(width*height){}
+
+	DepthBuffer(int width,int height, float initialValue): m_width(width),m_height(height),m_depth(width*height,initialValue){}
+
+	int width() const{return m_width;}
+	int height() const{return m_height;}
+
+	void set(int x,int y,float value){
+		m_depth[x+y*m_width] = value;
+	}
+
+	const float& get(int x,int y) const{
+		return m_depth[x+y*m_width];
+	}
+
+};
+
+class BSDF{
+public:
+	Color3 k_L;
+	Color3 k_G;
+	float sharpness = 100.0f;
+	BSDF(){}
+	BSDF(Color3 lambert, Color3 gloss, float sharp):k_L(lambert),k_G(gloss),sharpness(sharp){}
+
+	Color3 evaluateFiniteScatteringDensity(Vector3& w_i, Vector3& w_o, Vector3& n) const{
+		Vector3 w_h = (w_i + w_o).direction();
+		return (k_L + k_G*((sharpness+8.0f)*powf(std::max(0.0f,w_h.dot(n)),sharpness)/8.0f))/M_PI;
+	}
+};
+
 class Triangle{
 private: 
 	Point3 m_vertex[3];
@@ -148,7 +188,6 @@ class Scene{
 public:
 	std::vector<Triangle> triangleArray;
 	std::vector<Light> lightArray;
-	std::vector<Sphere> sphereArray;
 	Scene(){}
 };
 
@@ -161,3 +200,165 @@ public:
 	Camera() : zNear(-1.0f), zFar(-100.0f), fieldOfViewX(M_PI/2.0f){}
 };
 
+Ray computeEyeRay(float x, float y, int width, int height, const Camera& camera){
+
+	const float aspect = float(height)/float(width);
+
+	const float s = -2.0*tan(camera.fieldOfViewX*0.5f);
+
+	Vector3 start = Vector3(-(x/width - 0.5f)*s , (y/height - 0.5f)*s*aspect,1.0f*camera.zNear);
+
+	return Ray(start,start.direction());
+
+}
+
+float intersectT(Ray& R,const Triangle& T, float weight[3]){
+
+	Vector3 e1 = T.vertex(1) - T.vertex(0);
+	Vector3 e2 = T.vertex(2) - T.vertex(0);
+	Vector3 q = R.direction().cross(e2);
+
+	float  a = e1.dot(q);
+
+	Vector3 s = R.origin() - T.vertex(0);
+	Vector3 r = s.cross(e1);
+
+	weight[1] = s.dot(q) / a;
+	weight[2] = R.direction().dot(r) / a;
+	weight[0] = 1 - (weight[1]+weight[2]);
+
+	const float dist = e2.dot(r) / a;
+
+	static const float epsilon = 1e-7f;
+	static const float epsilon2 = 1e-10f;
+
+	if((a<=epsilon) || (weight[0]<-epsilon2) || (weight[1]<-epsilon2) || (weight[2]<-epsilon2) || (dist<=0.0f)){
+		return INFINITY;
+	}else{
+		return dist;
+	}
+}
+
+bool visible(Point3& P, Vector3& direction, float distanceToLight, const Scene& scene){
+
+	static const float rayBumpEpsilon = 1e-4;
+	Ray shadowRay = Ray(P+(direction*rayBumpEpsilon),direction);
+	distanceToLight -= rayBumpEpsilon;
+	float ignore[3];
+	for(unsigned int i = 0;i < scene.triangleArray.size();++i){
+		if(intersectT(shadowRay,scene.triangleArray[i],ignore) < distanceToLight){
+			return false;
+		}
+	}
+	return true;
+}
+
+void shade(const Scene& scene, Triangle& T,Point3& P, Vector3& n,  Vector3& w_o, Radiance3& L_o){
+	L_o = Color3(0.0f,0.0f,0.0f);
+
+	for(unsigned int i =0; i<scene.lightArray.size();i++){
+		Light light = scene.lightArray[i];
+
+		Vector3 offset = light.position - P;
+		float distanceToLight = offset.length();
+		Vector3 w_i = offset/distanceToLight;
+
+		if(visible(P ,w_i ,distanceToLight ,scene)){
+			Radiance3 L_i = light.power / (4*M_PI*distanceToLight*distanceToLight);
+			
+			// L_o.r += (L_i*T.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).r*std::max(0.0f,w_i.dot(n));
+			// L_o.g += (L_i*T.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).g*std::max(0.0f,w_i.dot(n));
+			// L_o.b += (L_i*T.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).b*std::max(0.0f,w_i.dot(n));
+
+			L_o += (L_i*T.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n))*std::max(0.0f,w_i.dot(n));
+	
+		}
+	}
+
+}
+
+
+bool sampleRayTriangle(const Scene& scene, int x, int y, Ray& R, Triangle& T, Radiance3& radiance, float& distance){
+	float weight[3];
+	const float d  = intersectT(R,T,weight);
+
+	if(d >= distance){
+		return false;
+	}
+
+	distance = d;
+
+	Point3 P = R.origin() + R.direction()*d;
+
+	Vector3 n = (T.normal(0)*weight[0] + T.normal(1)*weight[1] + T.normal(2)*weight[2]).direction();
+
+	Vector3 w_o = -R.direction();
+
+	shade(scene, T, P, n, w_o, radiance);
+
+	return true;
+}
+
+void rasterize(Image image,const Scene& scene,const Camera& camera){
+
+	const int w = image.width(), h = image.height();
+	DepthBuffer depthBuffer(w,h,INFINITY);
+
+	//for each triangle
+	for(unsigned int i = 0 ; i < scene.triangleArray.size() ; ++i){
+
+		Triangle T = scene.triangleArray[i];
+		const int x0 = 0;
+		const int x1 = w;
+		const int y0 = 0;
+		const int y1 = h;
+
+		//for each pixel
+		for (int y = y0 ; y < y1 ; ++y){
+			for (int x = x0; x < x1; ++x)
+			{
+				Ray R = computeEyeRay(x,y,w,h,camera);
+
+				Radiance3 L_o;
+				float distance = depthBuffer.get(x,y);
+				if(sampleRayTriangle(scene,x,y,R,T,L_o,distance)){
+					image.set(x,y,L_o);
+					depthBuffer.set(x,y,distance);
+				}
+			}
+		}
+
+	}
+	image.save("result_rasterize_1.ppm",2.0f);
+}
+
+void lightScene(Scene& scene){
+
+	
+	scene.lightArray.resize(1);
+	scene.lightArray[0].position = Point3(1, 3, 1);
+	scene.lightArray[0].power = Color3(1.0f,1.0f,1.0f)*20.0f;
+	
+
+}
+
+void triangleGroundScene(Scene& scene){
+	lightScene(scene);
+
+	scene.triangleArray.push_back(Triangle(Vector3(-0.5,1.7,-3), Vector3(-2.4,-0.5,-3), Vector3(1.1,0,-3),Vector3(0,0.6f,1).direction(),Vector3(-0.4f,-0.4f, 1.0f).direction(),Vector3(0.4f,-0.4f, 1.0f).direction(), BSDF(Color3::green()*0.8,Color3::white()*0.2f,100.0f)));
+	scene.triangleArray.push_back(Triangle(Vector3(-2.4,-0.5,-3),Vector3(-0.5,1.7,-3), Vector3(1.1,0,-3),Vector3(0,0.6f,1).direction(),Vector3(-0.4f,-0.4f, 1.0f).direction(),Vector3(0.4f,-0.4f, 1.0f).direction(), BSDF(Color3::green()*0.8,Color3::white()*0.2f,100.0f)));
+
+	const float groundY = -1.0f;
+
+	scene.triangleArray.push_back(Triangle(Vector3(-10, groundY, -10), Vector3(-10, groundY, -0.01f),Vector3(10, groundY, -0.01f),Vector3::unitY(), Vector3::unitY(), Vector3::unitY(), BSDF(Color3::white()*0.8f,Color3::white()*0.2f,100.0f)));
+	scene.triangleArray.push_back(Triangle(Vector3(-10, groundY, -10), Vector3(10, groundY, -0.01f),Vector3(10, groundY, -10),Vector3::unitY(), Vector3::unitY(), Vector3::unitY(), BSDF(Color3::white()*0.8f,Color3::white()*0.2f,100.0f)));
+
+}
+
+int main(){
+	Image image = Image(800,500);
+	Camera camera;
+	Scene scene = Scene();		
+	triangleGroundScene(scene);
+	rasterize(image,scene,camera);
+}
