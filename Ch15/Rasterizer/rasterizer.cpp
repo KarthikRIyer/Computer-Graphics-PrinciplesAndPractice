@@ -2,7 +2,41 @@
 #include<vector>
 #include <math.h>
 
-class Vector2 { public: float x,y; };
+using namespace std;
+
+class Vector2 { 
+	public: float x,y; 
+
+	Vector2(){}
+	Vector2(float a, float b):x(a),y(b){}
+
+	Vector2 max(Vector2 v){
+		float a,b;
+		if(y<=v.y){
+			b = v.y;
+		}else{b = y;}
+		if(x<=v.x){
+			a = v.x;
+		}else{a = x;}
+
+		return Vector2(a,b);
+	}
+
+	Vector2 min(Vector2 v){
+		
+		float a,b;
+		if(y>=v.y){
+			b = v.y;
+		}else{b = y;}
+		if(x>=v.x){
+			a = v.x;
+		}else{a = x;}
+
+		return Vector2(a,b);
+
+	}
+};
+
 class Vector3 { 
 	public: 
 	float x,y,z;
@@ -34,8 +68,10 @@ class Vector3 {
 	static Vector3 unitX(){return Vector3(1.0f,0.0f,0.0f);}
 	static Vector3 unitZ(){return Vector3(0.0f,0.0f,1.0f);}
  };
+
 typedef Vector2 Point2;
 typedef Vector3 Point3;
+
 class Color3 { 
 	public: float r,g,b; 
 			Color3(){}
@@ -58,8 +94,8 @@ class Color3 {
 			static Color3 orange(){return Color3(0.8f,0.2f,0.2f);}
 			static Color3 black(){return Color3(0.0f,0.0f,0.0f);}
 };
-// class Radiance3 Color3;
-// class Power3 Color3;
+
+
 typedef Color3 Radiance3;
 typedef Color3 Power3;
 
@@ -266,10 +302,6 @@ void shade(const Scene& scene, Triangle& T,Point3& P, Vector3& n,  Vector3& w_o,
 		if(visible(P ,w_i ,distanceToLight ,scene)){
 			Radiance3 L_i = light.power / (4*M_PI*distanceToLight*distanceToLight);
 			
-			// L_o.r += (L_i*T.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).r*std::max(0.0f,w_i.dot(n));
-			// L_o.g += (L_i*T.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).g*std::max(0.0f,w_i.dot(n));
-			// L_o.b += (L_i*T.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).b*std::max(0.0f,w_i.dot(n));
-
 			L_o += (L_i*T.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n))*std::max(0.0f,w_i.dot(n));
 	
 		}
@@ -299,24 +331,54 @@ bool sampleRayTriangle(const Scene& scene, int x, int y, Ray& R, Triangle& T, Ra
 	return true;
 }
 
-void rasterize(Image image,const Scene& scene,const Camera& camera){
+Vector2 perspectiveProject(Vector3 P, int width, int height, Camera& camera){
+	Vector2 Q(-P.x/P.z,-P.y/P.z);
+	const float aspect = float(height)/width;
 
-	const int w = image.width(), h = image.height();
+	const float s = -2.0*tan(camera.fieldOfViewX*0.5f);
+
+	Q.x = width*(-Q.x/s + 0.5f);
+	Q.y = height*(Q.y/(s*aspect) + 0.5f);
+
+	return Q;
+
+}
+
+void rasterize(Image image,const Scene& scene,Camera& camera){
+
+	const int w = image.width();
+	const int h = image.height();
+	
 	DepthBuffer depthBuffer(w,h,INFINITY);
 
 	//for each triangle
 	for(unsigned int i = 0 ; i < scene.triangleArray.size() ; ++i){
 
 		Triangle T = scene.triangleArray[i];
-		const int x0 = 0;
-		const int x1 = w;
-		const int y0 = 0;
-		const int y1 = h;
+
+		Vector2 low(w,h);
+		Vector2 high(0,0);
+
+		for(int j = 0; j < 3; ++j){
+			const Vector2& X = perspectiveProject(T.vertex(j),w,h,camera);
+			high = high.max(X);
+			low = low.min(X);
+		}
+
+		int x0 = (int)(low.x+0.5f);
+		int y0 = (int)(low.y+0.5f);
+		int x1 = (int)(high.x+0.5f);
+		int y1 = (int)(high.y+0.5f);
+
+		if(x0<0){x0=0;}
+		if(y0<0){y0=0;}
+		if(x1>w){x1=w;}
+		if(y1>h){y1=h;}
 
 		//for each pixel
 		for (int y = y0 ; y < y1 ; ++y){
 			for (int x = x0; x < x1; ++x)
-			{
+			{	
 				Ray R = computeEyeRay(x,y,w,h,camera);
 
 				Radiance3 L_o;
@@ -329,7 +391,9 @@ void rasterize(Image image,const Scene& scene,const Camera& camera){
 		}
 
 	}
-	image.save("result_rasterize_1.ppm",2.0f);
+
+
+	image.save("result_rasterize_2.ppm",2.0f);
 }
 
 void lightScene(Scene& scene){
