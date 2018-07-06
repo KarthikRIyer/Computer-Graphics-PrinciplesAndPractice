@@ -9,6 +9,24 @@ class Vector2 {
 
 	Vector2(){}
 	Vector2(float a, float b):x(a),y(b){}
+	Vector2 operator + (Vector2 v) const
+    { return Vector2(x + v.x, y + v.y); }
+    Vector2 operator - (Vector2 v) const
+    { return Vector2(x - v.x, y - v.y); }
+    Vector2 operator * (float f) const
+    { return Vector2(x*f,y*f); }
+    Vector2 operator - () const
+    { return Vector2(-x,-y); }
+    Vector2 operator / (float f) const
+    { return Vector2(x/f,y/f); }
+    float dot(const Vector2& v){
+		return (x * v.x + y * v.y);
+	}
+	float length(){
+		return (sqrt(x*x+y*y));
+	}
+	static Vector2 unitY(){return Vector2(0.0f,1.0f);}
+	static Vector2 unitX(){return Vector2(1.0f,0.0f);}
 
 	Vector2 max(Vector2 v){
 		float a,b;
@@ -35,6 +53,7 @@ class Vector2 {
 		return Vector2(a,b);
 
 	}
+
 };
 
 class Vector3 { 
@@ -50,9 +69,10 @@ class Vector3 {
     { return Vector3(-x,-y,-z); }
     Vector3 operator / (float f) const
     { return Vector3(x/f,y/f,z/f); }
+    void operator += (Vector3 c){x+=(c.x); y+=(c.y); z+=(c.z);}
 	Vector3(float a, float b,float c):x(a),y(b),z(c){}
-	Vector3(){}
-	Vector3 direction(){
+	Vector3():x(0),y(0),z(0){}
+	Vector3 direction() const{
 	return Vector3(x/sqrt(x*x+y*y+z*z),y/sqrt(x*x+y*y+z*z),z/sqrt(x*x+y*y+z*z));
 					}
 	Vector3 cross(Vector3 v){
@@ -61,7 +81,7 @@ class Vector3 {
 	float dot(Vector3 v){
 		return (x * v.x + y * v.y + z * v.z);
 	}
-	float length(){
+	float length() const{
 		return (sqrt(x*x+y*y+z*z));
 	}
 	static Vector3 unitY(){return Vector3(0.0f,1.0f,0.0f);}
@@ -98,6 +118,18 @@ class Color3 {
 
 typedef Color3 Radiance3;
 typedef Color3 Power3;
+
+//distance of point Q from line containing points A & B
+float lineDistance2D(const Point2& A,const Point2& B, const Point2& Q){
+
+	Vector2 n(A.y - B.y, B.x - A.x);
+	const float d = A.x*B.y - B.x*A.y;
+	return (n.dot(Q)+d)/n.length();
+}
+
+float bary2D(const Point2& A, const Point2& B, const Point2& C, const Point2& Q){
+	return ((lineDistance2D(B,C,Q))/(lineDistance2D(B,C,A)));
+}
 
 class Ray{
 	private: 
@@ -189,7 +221,7 @@ public:
 	BSDF(){}
 	BSDF(Color3 lambert, Color3 gloss, float sharp):k_L(lambert),k_G(gloss),sharpness(sharp){}
 
-	Color3 evaluateFiniteScatteringDensity(Vector3& w_i, Vector3& w_o, Vector3& n) const{
+	Color3 evaluateFiniteScatteringDensity(const Vector3& w_i,const Vector3& w_o,const Vector3& n) const{
 		Vector3 w_h = (w_i + w_o).direction();
 		return (k_L + k_G*((sharpness+8.0f)*powf(std::max(0.0f,w_h.dot(n)),sharpness)/8.0f))/M_PI;
 	}
@@ -248,6 +280,46 @@ Ray computeEyeRay(float x, float y, int width, int height, const Camera& camera)
 
 }
 
+Vector2 perspectiveProject(Vector3 P, int width, int height,const Camera& camera){
+	Vector2 Q(-P.x/P.z,-P.y/P.z);
+	const float aspect = float(height)/width;
+
+	const float s = -2.0*tan(camera.fieldOfViewX*0.5f);
+
+	Q.x = width*(-Q.x/s + 0.5f);
+	Q.y = height*(Q.y/(s*aspect) + 0.5f);
+
+	return Q;
+
+}
+
+void computeBoundingBox(const Triangle& T, const Camera& camera, const Image& image, Point2 V[3], int& x0, int& y0, int& x1, int& y1){
+
+	const int w = image.width();
+	const int h = image.height();
+
+	Vector2 high(w,h);
+	Vector2 low(0,0);
+
+	for(int i = 0 ; i < 3 ; ++i){
+		const Point2& X = perspectiveProject(T.vertex(i),w,h,camera);
+		V[i] = X;
+		high = high.max(X);
+		low = low.min(X);
+	}
+
+	x0 = (int)floor(low.x);
+	y0 = (int)floor(low.y);
+	x1 = (int)floor(high.x);
+	y1 = (int)floor(high.y);
+
+	if(x0<0){x0=0;}
+	if(y0<0){y0=0;}
+	if(x1>w){x1=w;}
+	if(y1>h){y1=h;}	
+
+}
+
 float intersectT(Ray& R,const Triangle& T, float weight[3]){
 
 	Vector3 e1 = T.vertex(1) - T.vertex(0);
@@ -275,7 +347,7 @@ float intersectT(Ray& R,const Triangle& T, float weight[3]){
 	}
 }
 
-bool visible(Point3& P, Vector3& direction, float distanceToLight, const Scene& scene){
+bool visible(const Point3& P, Vector3& direction, float distanceToLight, const Scene& scene){
 
 	static const float rayBumpEpsilon = 1e-4;
 	Ray shadowRay = Ray(P+(direction*rayBumpEpsilon),direction);
@@ -289,7 +361,7 @@ bool visible(Point3& P, Vector3& direction, float distanceToLight, const Scene& 
 	return true;
 }
 
-void shade(const Scene& scene, Triangle& T,Point3& P, Vector3& n,  Vector3& w_o, Radiance3& L_o){
+void shade(const Scene& scene, Triangle& T,const Point3& P,const Vector3& n,const Vector3& w_o, Radiance3& L_o){
 	L_o = Color3(0.0f,0.0f,0.0f);
 
 	for(unsigned int i =0; i<scene.lightArray.size();i++){
@@ -331,19 +403,6 @@ bool sampleRayTriangle(const Scene& scene, int x, int y, Ray& R, Triangle& T, Ra
 	return true;
 }
 
-Vector2 perspectiveProject(Vector3 P, int width, int height, Camera& camera){
-	Vector2 Q(-P.x/P.z,-P.y/P.z);
-	const float aspect = float(height)/width;
-
-	const float s = -2.0*tan(camera.fieldOfViewX*0.5f);
-
-	Q.x = width*(-Q.x/s + 0.5f);
-	Q.y = height*(Q.y/(s*aspect) + 0.5f);
-
-	return Q;
-
-}
-
 void rasterize(Image image,const Scene& scene,Camera& camera){
 
 	const int w = image.width();
@@ -356,36 +415,65 @@ void rasterize(Image image,const Scene& scene,Camera& camera){
 
 		Triangle T = scene.triangleArray[i];
 
-		Vector2 low(w,h);
-		Vector2 high(0,0);
+		//projected vertices
+		Vector2 V[3];
+		int x0,y0,x1,y1;
+		computeBoundingBox(T,camera,image,V,x0,y0,x1,y1);	
 
+		//vertex attributes divided by -z		
+		float vertexW[3];
+		Vector3 vertexNw[3];
+		Point3 vertexPw[3];
 		for(int j = 0; j < 3; ++j){
-			const Vector2& X = perspectiveProject(T.vertex(j),w,h,camera);
-			high = high.max(X);
-			low = low.min(X);
+			const float w = -1.0f/T.vertex(j).z;
+			vertexW[j] = w;
+			vertexPw[j] = T.vertex(j)*w;
+			vertexNw[j] = T.normal(j)*w;
 		}
-
-		int x0 = (int)(low.x+0.5f);
-		int y0 = (int)(low.y+0.5f);
-		int x1 = (int)(high.x+0.5f);
-		int y1 = (int)(high.y+0.5f);
-
-		if(x0<0){x0=0;}
-		if(y0<0){y0=0;}
-		if(x1>w){x1=w;}
-		if(y1>h){y1=h;}
 
 		//for each pixel
 		for (int y = y0 ; y < y1 ; ++y){
 			for (int x = x0; x < x1; ++x)
 			{	
-				Ray R = computeEyeRay(x,y,w,h,camera);
+				//pixel center
+				const Point2 Q(x+0.5f,y+0.5f);
 
-				Radiance3 L_o;
-				float distance = depthBuffer.get(x,y);
-				if(sampleRayTriangle(scene,x,y,R,T,L_o,distance)){
-					image.set(x,y,L_o);
-					depthBuffer.set(x,y,distance);
+				//2D barycentric weights
+				const float weight2D[3] = {bary2D(V[0],V[1],V[2],Q),bary2D(V[1],V[2],V[0],Q),bary2D(V[2],V[0],V[1],Q)};
+
+				if(weight2D[0]>0 && weight2D[1]>0 && weight2D[2]>0){
+					//interpolate depth
+					float w = 0.0f;
+					for(int k = 0; k<3; ++k){
+						w += weight2D[k] * vertexW[k];
+					}
+					Point3 pW = Point3();
+					Vector3 nW = Vector3();
+					//interpolate projective attributes
+					for(int k = 0;k<3;++k){
+						pW += vertexPw[k]*weight2D[k];
+						nW += vertexNw[k]*weight2D[k];
+					}
+
+					//recover interpolated attributes
+					const Point3& P = pW/w;
+					const Vector3& n = nW/w;
+
+					const float depth = P.length();
+
+					//depth test
+					if(depth<depthBuffer.get(x,y)){
+						//shade
+						Radiance3 L_o;
+						const Vector3& w_o = -P.direction();
+
+						//make surface normal of unit length
+						const Vector3& unitN = n.direction();
+
+						shade(scene,T,P,unitN,w_o,L_o);
+						depthBuffer.set(x,y,depth);
+						image.set(x,y,L_o);
+					}
 				}
 			}
 		}
@@ -393,7 +481,7 @@ void rasterize(Image image,const Scene& scene,Camera& camera){
 	}
 
 
-	image.save("result_rasterize_2.ppm",2.0f);
+	image.save("result_rasterize_3.ppm",2.0f);
 }
 
 void lightScene(Scene& scene){
