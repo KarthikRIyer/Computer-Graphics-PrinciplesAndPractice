@@ -45,7 +45,7 @@ class Color3 {
 			Color3 operator / (float f) const{return Color3(r/f,g/f,b/f);}
 			Color3 operator * (Color3 c) const{return(Color3(r*c.r, g*c.g, b*c.b));}
 			Color3 operator * (float f) const{return Color3(r*f,g*f,b*f);}
-			Color3 operator += (Color3 c){return Color3(r+=(c.r), g+=(c.g), b+=(c.b));}
+			void operator += (Color3 c){r+=(c.r); g+=(c.g); b+=(c.b);}
 			Color3 operator + (Color3 c) const{return Color3(r+c.r,g+c.g,b+c.b);}
 			static Color3 red(){return Color3(1.0f,0.0f,0.0f);}
 			static Color3 green(){return Color3(0.0f,1.0f,0.0f);}
@@ -57,8 +57,7 @@ class Color3 {
 			static Color3 orange(){return Color3(0.8f,0.2f,0.2f);}
 			static Color3 black(){return Color3(0.0f,0.0f,0.0f);}
 };
-// class Radiance3 Color3;
-// class Power3 Color3;
+
 typedef Color3 Radiance3;
 typedef Color3 Power3;
 
@@ -115,7 +114,7 @@ void Image::save(const std::string& filename,float d) const{
 									  , PPMGammaEncode(c.g, d)
 									  , PPMGammaEncode(c.b, d));
 		}
-	}
+	}	
 	fclose(file);
 }
 
@@ -281,9 +280,7 @@ void shade(const Scene& scene, Triangle& T,Point3& P, Vector3& n,  Vector3& w_o,
 		if(visible(P ,w_i ,distanceToLight ,scene)){
 			Radiance3 L_i = light.power / (4*M_PI*distanceToLight*distanceToLight);
 			
-			L_o.r += (L_i*T.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).r*std::max(0.0f,w_i.dot(n));
-			L_o.g += (L_i*T.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).g*std::max(0.0f,w_i.dot(n));
-			L_o.b += (L_i*T.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).b*std::max(0.0f,w_i.dot(n));
+			L_o += (L_i*T.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n))*std::max(0.0f,w_i.dot(n));
 	
 		}
 	}
@@ -302,9 +299,7 @@ void shade(const Scene& scene, Sphere& S, Point3& P, Vector3& n, Vector3& w_o, R
 		if(visible(P ,w_i ,distanceToLight ,scene)){
 			Radiance3 L_i = light.power / (4*M_PI*distanceToLight*distanceToLight);
 
-			L_o.r += (L_i*S.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).r*std::max(0.0f,w_i.dot(n));
-			L_o.g += (L_i*S.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).g*std::max(0.0f,w_i.dot(n));
-			L_o.b += (L_i*S.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n)).b*std::max(0.0f,w_i.dot(n));
+			L_o += (L_i*S.bsdf().evaluateFiniteScatteringDensity(w_i,w_o,n))*std::max(0.0f,w_i.dot(n));
 		}
 	}
 }
